@@ -58,17 +58,20 @@ def process_pdf(file_path, selected_model, target_langs):
 st.set_page_config(page_title="Document Translator", layout="centered")
 st.title("Document Translator with GPT-4o")
 
+formats = ["TXT"]
+
 # Step 1: User selects file format
-file_format = st.selectbox("Choose File Format to Upload:", ["PDF", "DOCX", "TXT"])
+file_format = st.selectbox("Choose File Format to Upload:", formats,   index=0 )
+# file_format = st.selectbox("Choose File Format to Upload:", ["PDF", "DOCX", "TXT"])
 
 # Step 2: File upload based on selected format
-if file_format == "PDF":
-    uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["pdf"])
-    file_extension = "pdf" if uploaded_file else None
-elif file_format == "DOCX":
-    uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["docx"])
-    file_extension = "docx" if uploaded_file else None
-elif file_format == "TXT":
+# if file_format == "PDF":
+#     uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["pdf"])
+#     file_extension = "pdf" if uploaded_file else None
+# elif file_format == "DOCX":
+#     uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["docx"])
+#     file_extension = "docx" if uploaded_file else None
+if file_format == "TXT":
     uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["txt"])
     file_extension = "txt" if uploaded_file else None
 
