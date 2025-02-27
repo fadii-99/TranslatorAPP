@@ -1,7 +1,12 @@
 streamlit
+langchain
+openai
 pandas
 python-dotenv
-langchain
-langchain-community
+openpyxl
 langchain-openai
-langchain-core
+langchain-community
+python-dotenv
+PyMuPDF
+python-docx
+lxml
