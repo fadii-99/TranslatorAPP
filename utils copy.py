@@ -159,3 +159,12 @@ def translate_file(input_file, output_file, target_language):
     
     else:
         raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx or .txt files")
+
+# Example usage:
+if __name__ == "__main__":
+    # For DOCX
+    # translate_file("input.docx", "output_french.docx", "French")
+    
+    # For TXT
+    # translate_file("input.txt", "output_spanish.txt", "Spanish")
+    pass
