@@ -7,7 +7,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
-from utils import translate_file  # Import DOCX translation function from your provided utils.py
+from utils import translate_file
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +17,6 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 def process_pdf(file_path, selected_model, target_langs):
     loader = PyPDFLoader(file_path)
     docs = loader.load()
-
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=0)
     splits = text_splitter.split_documents(docs)
 
@@ -58,22 +57,25 @@ def process_pdf(file_path, selected_model, target_langs):
 st.set_page_config(page_title="Document Translator", layout="centered")
 st.title("Document Translator with GPT-4o")
 
-# formats = ["TXT"]
-
 # Step 1: User selects file format
-# file_format = st.selectbox("Choose File Format to Upload:", formats,   index=0 )
-file_format = st.selectbox("Choose File Format to Upload:", ["PDF", "DOCX", "TXT"])
+file_format = st.selectbox("Choose File Format to Upload:", ["PDF", "DOCX", "TXT", "ODT","RTF"])
 
 # Step 2: File upload based on selected format
 if file_format == "PDF":
-    uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["pdf"])
+    uploaded_file = st.file_uploader("Upload your PDF file", type=["pdf"])
     file_extension = "pdf" if uploaded_file else None
 elif file_format == "DOCX":
-    uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["docx"])
-    file_extension = "docx" if uploaded_file else None
-if file_format == "TXT":
-    uploaded_file = st.file_uploader(f"Upload your {file_format} file", type=["txt"])
+    uploaded_file = st.file_uploader("Upload your Word document", type=["docx"])
+    file_extension = os.path.splitext(uploaded_file.name)[1].lower()[1:] if uploaded_file else None
+elif file_format == "TXT":
+    uploaded_file = st.file_uploader("Upload your TXT file", type=["txt"])
     file_extension = "txt" if uploaded_file else None
+elif file_format == "ODT":
+    uploaded_file = st.file_uploader("Upload your TXT file", type=["odt"])
+    file_extension = "odt" if uploaded_file else None
+elif file_format == "RTF":
+    uploaded_file = st.file_uploader("Upload your TXT file", type=["rtf"])
+    file_extension = "rtf" if uploaded_file else None
 
 # Model selection
 selected_model = st.selectbox("Select Translation Model:", ["gpt-4o", "gpt-4o-mini"])
@@ -88,11 +90,17 @@ target_langs = []
 if uploaded_file:
     if file_extension == "pdf":
         target_langs = st.multiselect("Select Target Languages:", languages, default=["French", "Arabic"])
-    elif file_extension == "docx":
-        target_lang = st.selectbox("Select Target Language (for DOCX):", languages, index=1)  # Default to Arabic
+    elif file_extension in "docx":
+        target_lang = st.selectbox("Select Target Language (for Word Documents):", languages, index=1)  # Default to Arabic
         target_langs = [target_lang] if target_lang else []
     elif file_extension == "txt":
         target_lang = st.selectbox("Select Target Language (for TXT):", languages, index=1)  # Default to Arabic
+        target_langs = [target_lang] if target_lang else []
+    elif file_extension == "odt":
+        target_lang = st.selectbox("Select Target Language (for ODT):", languages, index=1)  # Default to Arabic
+        target_langs = [target_lang] if target_lang else []
+    elif file_extension == "rtf":
+        target_lang = st.selectbox("Select Target Language (for RTF):", languages, index=1)  # Default to Arabic
         target_langs = [target_lang] if target_lang else []
 else:
     st.write(f"Please upload a {file_format} file to select target languages.")
@@ -110,19 +118,13 @@ if uploaded_file and selected_model and target_langs:
         # Start translation process with loading spinner
         with st.spinner(f"Translating {file_format} to {', '.join(target_langs)}..."):
             if file_extension == "pdf":
-                # Process PDF
                 df_results = process_pdf(input_file_path, selected_model, [lang.lower() for lang in target_langs])
-
-                # Show preview of translated data
                 st.write("Translation Preview:")
                 st.dataframe(df_results.head(20))
-
-                # Provide download button for Excel file
                 excel_buffer = io.BytesIO()
                 with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
                     df_results.to_excel(writer, index=False)
                 excel_buffer.seek(0)
-
                 st.download_button(
                     label="Download Translations as Excel",
                     data=excel_buffer,
@@ -130,25 +132,25 @@ if uploaded_file and selected_model and target_langs:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
-            elif file_extension == "docx":
-                # Process DOCX
-                output_file_path = f"translated_document_{target_langs[0].lower()}.docx"
-                translate_file(input_file_path, output_file_path, target_langs[0])  # Use function from utils.py
-
-                # Provide download button for translated DOCX
+            elif file_extension in "docx":
+                output_file_path = f"translated_document_{target_langs[0].lower()}.{file_extension}"
+                translate_file(input_file_path, output_file_path, target_langs[0])
+                mime_types = {
+                    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "odt": "application/vnd.oasis.opendocument.text",
+                    "rtf": "application/rtf"
+                }
                 with open(output_file_path, "rb") as f:
                     st.download_button(
-                        label=f"Download Translated DOCX ({target_langs[0]})",
+                        label=f"Download Translated Document ({target_langs[0]})",
                         data=f,
-                        file_name=f"translated_document_{target_langs[0].lower()}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        file_name=f"translated_document_{target_langs[0].lower()}.{file_extension}",
+                        mime=mime_types[file_extension],
                     )
 
             elif file_extension == "txt":
                 output_file_path = f"translated_document_{target_langs[0].lower()}.txt"
-                translate_file(input_file_path, output_file_path, target_langs[0])  # Use function from utils.py
-
-                # Provide download button for translated DOCX
+                translate_file(input_file_path, output_file_path, target_langs[0])
                 with open(output_file_path, "rb") as f:
                     st.download_button(
                         label=f"Download Translated TXT ({target_langs[0]})",
@@ -156,15 +158,26 @@ if uploaded_file and selected_model and target_langs:
                         file_name=f"translated_document_{target_langs[0].lower()}.txt",
                         mime="text/plain",
                     )
-
-        # Spinner stops here, and success message appears
-        st.success("Translation completed and file is ready for download.")
-
-        # Clean up temporary files
-        if os.path.exists(input_file_path):
-            os.remove(input_file_path)
-        if file_extension == "docx" and os.path.exists(output_file_path):
-            os.remove(output_file_path)
+            elif file_extension == "odt":
+                output_file_path = f"translated_document_{target_langs[0].lower()}.odt"
+                translate_file(input_file_path, output_file_path, target_langs[0])
+                with open(output_file_path, "rb") as f:
+                    st.download_button(
+                        label=f"Download Translated TXT ({target_langs[0]})",
+                        data=f,
+                        file_name=f"translated_document_{target_langs[0].lower()}.odt",
+                        mime="text/plain",
+                    )
+            elif file_extension == "rtf":
+                output_file_path = f"translated_document_{target_langs[0].lower()}.rtf"
+                translate_file(input_file_path, output_file_path, target_langs[0])
+                with open(output_file_path, "rb") as f:
+                    st.download_button(
+                        label=f"Download Translated TXT ({target_langs[0]})",
+                        data=f,
+                        file_name=f"translated_document_{target_langs[0].lower()}.rtf",
+                        mime="text/plain",
+                    )
 else:
     if uploaded_file and not target_langs:
         st.warning("Please select a target language and click 'Translate' to proceed.")

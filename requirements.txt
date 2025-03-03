@@ -6,7 +6,7 @@ python-dotenv
 openpyxl
 langchain-openai
 langchain-community
-python-dotenv
 PyMuPDF
 python-docx
 lxml
+langchain-core

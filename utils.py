@@ -1,8 +1,12 @@
 import os
 import zipfile
-from xml.etree import ElementTree as ET
 import shutil
+from xml.etree import ElementTree as ET
 from openai import OpenAI
+from lxml import etree
+import re
+
+
 
 
 RTL_LANGUAGES = {
@@ -10,152 +14,329 @@ RTL_LANGUAGES = {
     "Pashto", "Sindhi", "Dhivehi", "Kurdish"
 }
 
-# Existing DOCX functions remain unchanged
-def extract_docx(input_docx, extract_folder):
-    """Extract DOCX contents to temporary folder"""
-    with zipfile.ZipFile(input_docx, 'r') as zip_ref:
-        zip_ref.extractall(extract_folder)
-    return os.path.join(extract_folder, "word", "document.xml")
+class DocxTranslator:
+    def __init__(self, input_file, output_file, target_language):
+        self.input_file = input_file
+        self.output_file = output_file
+        self.target_language = target_language
+        self.extract_folder = 'temp_extract'
+        self.word_ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def create_translated_docx(extract_folder, output_docx):
-    """Create new DOCX file from modified extracted contents"""
-    shutil.make_archive(output_docx.replace('.docx', ''), 'zip', extract_folder)
-    if os.path.exists(output_docx):
-        os.remove(output_docx)
-    os.rename(output_docx.replace('.docx', '') + '.zip', output_docx)
+    def extract_docx(self):
+        """Extract DOCX contents to a temporary folder and return the document.xml path"""
+        with zipfile.ZipFile(self.input_file, 'r') as zip_ref:
+            zip_ref.extractall(self.extract_folder)
+        return os.path.join(self.extract_folder, "word", "document.xml")
 
-def translate_xml_to_language(xml_path, target_language):
-    """Translate text content in XML to the specified target language and set text direction"""
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    
-    tree = ET.parse(xml_path)
-    root = tree.getroot()
-    
-    word_ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-    ET.register_namespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
-    
-    is_rtl = target_language in RTL_LANGUAGES
-    
-    for paragraph in root.findall(f'.//{word_ns}p'):
-        text_elements = paragraph.findall(f'.//{word_ns}t')
-        if not text_elements:  # Skip paragraphs with no text elements
-            continue
-        
-        full_text = ""
-        for text_elem in text_elements:
-            if text_elem.text and text_elem.text.strip():
-                full_text += text_elem.text
-        
-        if full_text.strip():  # Only translate if there’s meaningful text
+    def create_translated_docx(self):
+        """Create a new DOCX file from the modified extracted contents"""
+        base_name = self.output_file.replace('.docx', '')
+        shutil.make_archive(base_name, 'zip', self.extract_folder)
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
+        os.rename(base_name + '.zip', self.output_file)
+
+    def translate_xml_to_language(self, xml_path):
+        """Translate text content in XML and adjust text direction for RTL languages"""
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+        ET.register_namespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
+        is_rtl = self.target_language in RTL_LANGUAGES
+
+        for paragraph in root.findall(f'.//{self.word_ns}p'):
+            text_elements = paragraph.findall(f'.//{self.word_ns}t')
+            if not text_elements:
+                continue
+
+            # Concatenate all text elements in the paragraph
+            full_text = "".join(text_elem.text for text_elem in text_elements if text_elem.text and text_elem.text.strip())
+            if full_text.strip():
+                try:
+                    response = self.client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
+                            {"role": "user", "content": full_text}
+                        ],
+                        temperature=0.3
+                    )
+                    translated_text = response.choices[0].message.content
+
+                    # Replace first text element with translated text; clear the others.
+                    text_elements[0].text = translated_text
+                    for elem in text_elements[1:]:
+                        elem.text = ""
+                except Exception as e:
+                    print(f"Translation error for paragraph: {e}")
+                    continue
+
+            # Set RTL direction if required
+            if is_rtl:
+                pPr = paragraph.find(f'{self.word_ns}pPr')
+                if pPr is None:
+                    pPr = ET.SubElement(paragraph, f'{self.word_ns}pPr')
+                bidi = pPr.find(f'{self.word_ns}bidi')
+                if bidi is None:
+                    bidi = ET.SubElement(pPr, f'{self.word_ns}bidi')
+                bidi.set(f'{self.word_ns}val', 'on')
+
+        tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+
+    def run(self):
+        # Clean up any existing temporary extraction folder
+        if os.path.exists(self.extract_folder):
             try:
-                response = client.chat.completions.create(
+                shutil.rmtree(self.extract_folder)
+            except Exception as e:
+                print(f"Warning: Could not remove existing {self.extract_folder} folder: {e}")
+        os.makedirs(self.extract_folder, exist_ok=True)
+
+        try:
+            xml_path = self.extract_docx()
+            self.translate_xml_to_language(xml_path)
+            self.create_translated_docx()
+            print(f"Translation complete! Saved as: {self.output_file}")
+        except Exception as e:
+            print(f"Error during DOCX translation: {e}")
+        finally:
+            if os.path.exists(self.extract_folder):
+                try:
+                    shutil.rmtree(self.extract_folder)
+                except Exception as e:
+                    print(f"Warning: Could not clean up {self.extract_folder} folder: {e}")
+
+
+class TxtTranslator:
+    def __init__(self, input_file, output_file, target_language):
+        self.input_file = input_file
+        self.output_file = output_file
+        self.target_language = target_language
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+    def translate_text_file(self):
+        """Read a TXT file, translate its content in segments, and write the translated text to an output file."""
+        try:
+            with open(self.input_file, 'r', encoding='utf-8') as file:
+                text_content = file.read()
+
+            if not text_content.strip():
+                print("Input text file is empty")
+                return
+
+            # Split text into segments (e.g., paragraphs)
+            segments = text_content.split('\n\n')
+            translated_segments = []
+
+            for segment in segments:
+                if segment.strip():
+                    response = self.client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[
+                            {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
+                            {"role": "user", "content": segment}
+                        ],
+                        temperature=0.3
+                    )
+                    translated_segments.append(response.choices[0].message.content)
+
+            with open(self.output_file, 'w', encoding='utf-8') as file:
+                file.write('\n\n'.join(translated_segments))
+
+            print(f"Translation complete! Saved as: {self.output_file}")
+        except Exception as e:
+            print(f"Error during TXT translation: {e}")
+
+    def run(self):
+        self.translate_text_file()
+
+
+
+class OdtTranslator:
+    def __init__(self, input_file, output_file, target_language):
+        self.input_file = input_file
+        self.output_file = output_file
+        self.target_language = target_language
+        self.extract_dir = "extracted_odt"
+        self.content_xml_path = os.path.join(self.extract_dir, "content.xml")
+        self.namespaces = {
+            'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+            'text': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+            'style': 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
+            'fo': 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0'
+        }
+        # Initialize the LLM translation client
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    
+    def extract_odt(self):
+        if not os.path.exists(self.input_file):
+            raise FileNotFoundError(f"Input file '{self.input_file}' not found!")
+        with zipfile.ZipFile(self.input_file, 'r') as zip_ref:
+            zip_ref.extractall(self.extract_dir)
+    
+    def parse_content(self):
+        parser = etree.XMLParser(remove_blank_text=True)
+        tree = etree.parse(self.content_xml_path, parser)
+        root = tree.getroot()
+        # Register namespaces for correct XML handling
+        for prefix, uri in self.namespaces.items():
+            etree.register_namespace(prefix, uri)
+        return tree, root
+    
+    def extract_text_nodes(self, root):
+        # Get nodes that may contain translatable text
+        text_nodes = (
+            root.findall('.//text:h', self.namespaces) +
+            root.findall('.//text:p', self.namespaces) +
+            root.findall('.//text:span', self.namespaces)
+        )
+        texts_to_translate = []
+        node_mapping = []  # list of tuples (node, 'text' or 'tail')
+        for node in text_nodes:
+            if node.text and node.text.strip():
+                texts_to_translate.append(node.text)
+                node_mapping.append((node, 'text'))
+            for child in node:
+                if child.text and child.text.strip():
+                    texts_to_translate.append(child.text)
+                    node_mapping.append((child, 'text'))
+                if child.tail and child.tail.strip():
+                    texts_to_translate.append(child.tail)
+                    node_mapping.append((child, 'tail'))
+        return texts_to_translate, node_mapping, text_nodes
+    
+    def translate_texts(self, texts):
+        translated_texts = []
+        for text in texts:
+            try:
+                response = self.client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": f"You are a translator. Translate the following text to {target_language}."},
-                        {"role": "user", "content": full_text}
+                        {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
+                        {"role": "user", "content": text}
                     ],
                     temperature=0.3
                 )
-                translated_text = response.choices[0].message.content
-                
-                # Distribute translated text back to elements (simplified: replace first, clear others)
-                text_elements[0].text = translated_text
-                for elem in text_elements[1:]:
-                    elem.text = ""
+                translated = response.choices[0].message.content
+                translated_texts.append(translated)
             except Exception as e:
-                print(f"Translation error for paragraph: {e}")
-                continue
-        
-        # Set RTL direction for RTL languages
-        if is_rtl:
-            pPr = paragraph.find(f'{word_ns}pPr')
-            if pPr is None:
-                pPr = ET.SubElement(paragraph, f'{word_ns}pPr')
-            
-            bidi = pPr.find(f'{word_ns}bidi')
-            if bidi is None:
-                bidi = ET.SubElement(pPr, f'{word_ns}bidi')
-            bidi.set(f'{word_ns}val', 'on')
-
-    tree.write(xml_path, encoding='utf-8', xml_declaration=True)
-
-
-
-
-def translate_text_file(input_txt, output_txt, target_language):
-    """Translate a .txt file to the specified target language in segments"""
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                print(f"Error translating '{text}': {e}")
+                translated_texts.append(text)
+        return translated_texts
     
-    try:
-        # Read the input text file
-        with open(input_txt, 'r', encoding='utf-8') as file:
-            text_content = file.read()
-        
-        if not text_content.strip():
-            print("Input text file is empty")
+    def update_content(self, node_mapping, translated_texts):
+        for (node, attr), translated_text in zip(node_mapping, translated_texts):
+            if attr == 'text':
+                node.text = translated_text
+            elif attr == 'tail':
+                node.tail = translated_text
+    
+    def add_rtl_formatting(self, root, text_nodes):
+        # Only add RTL formatting if the target language is RTL
+        if self.target_language not in RTL_LANGUAGES:
             return
         
-        # Split text into paragraphs (or customize the splitting logic)
-        segments = text_content.split('\n\n')  # Split by double newline (paragraphs)
-        translated_segments = []
+        # Locate or create the <office:automatic-styles> element
+        auto_styles = root.find('.//office:automatic-styles', self.namespaces)
+        if auto_styles is None:
+            auto_styles = etree.SubElement(root, '{urn:oasis:names:tc:opendocument:xmlns:office:1.0}automatic-styles')
         
-        for segment in segments:
-            if segment.strip():
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": f"You are a translator. Translate the following text to {target_language}."},
-                        {"role": "user", "content": segment}
-                    ],
-                    temperature=0.3
-                )
-                translated_segments.append(response.choices[0].message.content)
+        # Find or create the RTL style
+        rtl_style = auto_styles.find(".//style:style[@style:name='RTL_Style']", self.namespaces)
+        if rtl_style is None:
+            rtl_style = etree.SubElement(auto_styles, '{urn:oasis:names:tc:opendocument:xmlns:style:1.0}style')
+            rtl_style.set('{urn:oasis:names:tc:opendocument:xmlns:style:1.0}name', 'RTL_Style')
+            rtl_style.set('{urn:oasis:names:tc:opendocument:xmlns:style:1.0}family', 'paragraph')
+            para_props = etree.SubElement(rtl_style, '{urn:oasis:names:tc:opendocument:xmlns:style:1.0}paragraph-properties')
+            para_props.set('{urn:oasis:names:tc:opendocument:xmlns:style:1.0}writing-mode', 'rl-tb')
+            para_props.set('{urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0}text-align', 'end')
         
-        # Write translated content to output file
-        with open(output_txt, 'w', encoding='utf-8') as file:
-            file.write('\n\n'.join(translated_segments))
+        # Apply RTL style to paragraph and heading elements, and optionally to spans
+        for node in text_nodes:
+            if node.tag in (
+                '{urn:oasis:names:tc:opendocument:xmlns:text:1.0}h',
+                '{urn:oasis:names:tc:opendocument:xmlns:text:1.0}p'
+            ):
+                node.set('{urn:oasis:names:tc:opendocument:xmlns:text:1.0}style-name', 'RTL_Style')
+            elif node.tag == '{urn:oasis:names:tc:opendocument:xmlns:text:1.0}span':
+                node.set('{urn:oasis:names:tc:opendocument:xmlns:text:1.0}style-name', 'RTL_Style')
+    
+    def repackage_odt(self):
+        # Package the modified files back into an .odt archive.
+        base_name = "temp_output"
+        shutil.make_archive(base_name, 'zip', self.extract_dir)
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
+        os.rename(base_name + '.zip', self.output_file)
+    
+    def cleanup(self):
+        if os.path.exists(self.extract_dir):
+            shutil.rmtree(self.extract_dir)
+    
+    def run(self):
+        # Step 1: Extract the .odt file
+        self.extract_odt()
         
-        print(f"Translation complete! Saved as: {output_txt}")
+        # Step 2: Parse content.xml
+        tree, root = self.parse_content()
         
-    except Exception as e:
-        raise Exception(f"Error during TXT translation: {e}")
+        # Step 3: Extract text nodes to translate
+        texts_to_translate, node_mapping, text_nodes = self.extract_text_nodes(root)
+        
+        # Step 4: Translate texts using the LLM
+        translated_texts = self.translate_texts(texts_to_translate)
+        
+        # Step 5: Update XML with the translated texts
+        self.update_content(node_mapping, translated_texts)
+        
+        # Step 6: Add RTL formatting if the target language is RTL
+        self.add_rtl_formatting(root, text_nodes)
+        
+        # Step 7: Save the modified XML back to content.xml
+        tree.write(self.content_xml_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+        
+        # (Optional) Output the first few lines for inspection
+        print("\nFirst 5 lines of modified content.xml:")
+        with open(self.content_xml_path, 'r', encoding='utf-8') as f:
+            for i, line in enumerate(f, 1):
+                print(f"Line {i}: {line.strip()}")
+                if i >= 5:
+                    break
+        
+        # Validate the modified XML
+        try:
+            etree.parse(self.content_xml_path, etree.XMLParser(remove_blank_text=True))
+            print("XML validation successful!")
+        except etree.ParseError as e:
+            print(f"XML validation failed: {e}")
+            raise
+        
+        # Step 8: Repackage the folder contents into a new .odt file
+        self.repackage_odt()
+        print(f"Translation complete! Saved as: {self.output_file}")
+        
+        # Cleanup the temporary extraction folder
+        self.cleanup()
+
 
 
 
 def translate_file(input_file, output_file, target_language):
-    """Main function to translate either DOCX or TXT files"""
+    """
+    Dispatch function that creates an instance of the appropriate translator class based on file extension.
+    """
     file_extension = os.path.splitext(input_file)[1].lower()
-    
+
     if file_extension == '.docx':
-        extract_folder = 'temp_extract'
-        
-        if os.path.exists(extract_folder):
-            try:
-                shutil.rmtree(extract_folder)
-            except Exception as e:
-                print(f"Warning: Could not remove existing temp_extract folder: {e}")
-        
-        try:
-            os.makedirs(extract_folder, exist_ok=True)
-        except Exception as e:
-            raise Exception(f"Failed to create temp_extract folder: {e}")
-        
-        try:
-            xml_path = extract_docx(input_file, extract_folder)
-            translate_xml_to_language(xml_path, target_language)
-            create_translated_docx(extract_folder, output_file)
-            print(f"Translation complete! Saved as: {output_file}")
-        except Exception as e:
-            raise Exception(f"Error during DOCX translation: {e}")
-        finally:
-            if os.path.exists(extract_folder):
-                try:
-                    shutil.rmtree(extract_folder)
-                except Exception as e:
-                    print(f"Warning: Could not clean up temp_extract folder: {e}")
-    
+        translator = DocxTranslator(input_file, output_file, target_language)
     elif file_extension == '.txt':
-        translate_text_file(input_file, output_file, target_language)
-    
+        translator = TxtTranslator(input_file, output_file, target_language)
+    elif file_extension == '.odt':
+        translator = OdtTranslator(input_file, output_file, target_language)
+    # elif file_extension == '.rtf':
+    #     translator = RtfTranslator(input_file, output_file, target_language)
     else:
         raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx or .txt files")
+
+    translator.run()
+
