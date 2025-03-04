@@ -5,6 +5,7 @@ from xml.etree import ElementTree as ET
 from openai import OpenAI
 from lxml import etree
 import re
+import subprocess
 
 
 
@@ -105,6 +106,7 @@ class DocxTranslator:
                     shutil.rmtree(self.extract_folder)
                 except Exception as e:
                     print(f"Warning: Could not clean up {self.extract_folder} folder: {e}")
+
 
 
 class TxtTranslator:
@@ -319,6 +321,94 @@ class OdtTranslator:
         self.cleanup()
 
 
+class DocTranslator:
+    def __init__(self, input_file, output_file, target_language):
+        self.input_file = input_file
+        self.output_file = output_file
+        self.target_language = target_language
+        # OpenAI library should be preconfigured with your API key
+        # For example: openai.api_key = os.environ.get("OPENAI_API_KEY")
+        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+    def extract_text_from_doc(self):
+        """
+        Extracts text from a .doc file using antiword.
+        Returns the extracted text as a UTF-8 string.
+        """
+        try:
+            # Run antiword to extract text from the document.
+            result = subprocess.run(
+                ['antiword', self.input_file],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            if result.returncode != 0:
+                print(f"Error extracting text using antiword: {result.stderr}")
+                return ""
+            return result.stdout
+        except Exception as e:
+            print(f"Error extracting text: {e}")
+            return ""
+
+    def translate_text(self, text):
+        """
+        Translates text content paragraph by paragraph.
+        For right-to-left (RTL) languages, a right-to-left mark is added.
+        """
+        paragraphs = text.split('\n')
+        translated_paragraphs = []
+        is_rtl = self.target_language in RTL_LANGUAGES
+
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                translated_paragraphs.append("")
+                continue
+
+            try:
+                response = self.client.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
+                        {"role": "user", "content": paragraph}
+                    ],
+                    temperature=0.3
+                )
+                translated = response.choices[0].message.content.strip()
+                
+                # If the target language is RTL, prepend the RTL mark
+                if is_rtl:
+                    translated = "\u200F" + translated
+                
+                translated_paragraphs.append(translated)
+            except Exception as e:
+                print(f"Translation error for paragraph '{paragraph}': {e}")
+                translated_paragraphs.append(paragraph)
+
+        return "\n".join(translated_paragraphs)
+
+    def create_translated_doc(self, translated_text):
+        """
+        Creates a new .doc file (as a plain text file with a .doc extension)
+        containing the translated text.
+        """
+        try:
+            with open(self.output_file, 'w', encoding='utf-8') as f:
+                f.write(translated_text)
+            print(f"Translation complete! Saved as: {self.output_file}")
+        except Exception as e:
+            print(f"Error creating translated doc file: {e}")
+
+    def run(self):
+        text = self.extract_text_from_doc()
+        print(f"Extracted text: {text[:100]}...")  # Debug: Check if text is extracted
+        if not text:
+            print("No text extracted from the document.")
+            return
+        translated_text = self.translate_text(text)
+        print(f"Translated text: {translated_text[:100]}...")  # Debug: Check translation
+        self.create_translated_doc(translated_text)
+
 
 
 def translate_file(input_file, output_file, target_language):
@@ -333,10 +423,10 @@ def translate_file(input_file, output_file, target_language):
         translator = TxtTranslator(input_file, output_file, target_language)
     elif file_extension == '.odt':
         translator = OdtTranslator(input_file, output_file, target_language)
-    # elif file_extension == '.rtf':
-    #     translator = RtfTranslator(input_file, output_file, target_language)
+    elif file_extension == '.doc':
+        translator = DocTranslator(input_file, output_file, target_language)
     else:
-        raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx or .txt files")
+        raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx, .txt, .odt, .doc files")
 
     translator.run()
 
