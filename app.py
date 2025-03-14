@@ -134,12 +134,17 @@ if uploaded_file and selected_model and target_langs:
 
             elif file_extension == "docx":
                 output_file_path = f"translated_document_{target_langs[0].lower()}.{file_extension}"
+                
+                # Translate the file using your custom translator
                 translate_file(input_file_path, output_file_path, target_langs[0])
+                
+                # Define appropriate MIME types for DOCX files
                 mime_types = {
                     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     "odt": "application/vnd.oasis.opendocument.text",
                     "doc": "application/doc"
                 }
+    
                 with open(output_file_path, "rb") as f:
                     st.download_button(
                         label=f"Download Translated Document ({target_langs[0]})",

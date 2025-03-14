@@ -2,8 +2,12 @@ import os
 import zipfile
 import shutil
 import tempfile
-from openai import OpenAI
+from xml.etree import ElementTree as ET
 from lxml import etree
+import re
+import subprocess
+from openai import OpenAI
+import openai
 
 RTL_LANGUAGES = {
     "Arabic", "Hebrew", "Persian", "Urdu", "Yiddish", 
@@ -17,10 +21,10 @@ class DocxTranslator:
         self.target_language = target_language
         # Use a unique temporary folder for multi-user handling.
         self.extract_folder = tempfile.mkdtemp(prefix="docx_extract_")
-        # Define the Word namespace.
-        self.word_ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-        # Set up the OpenAI client (ensure OPENAI_API_KEY is set in your environment)
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self.word_ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+        # Configure the OpenAI client (make sure OPENAI_API_KEY is set in your environment)
+        openai.api_key = os.environ.get("OPENAI_API_KEY")
+        self.client = openai
 
     def extract_docx(self):
         """Extract DOCX contents to a temporary folder and return the document.xml path."""
@@ -38,11 +42,8 @@ class DocxTranslator:
 
     def translate_text(self, text):
         """Translate a piece of text using the OpenAI API."""
-        prompt = f"Translate the following English text to {self.target_language}:\n\n{text}"
-        print(f"Translating: {text}")  # Debug: show text being translated.
         try:
-            print('1')
-            response = self.client.chat.completions.create(
+            response = self.client.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
@@ -50,9 +51,7 @@ class DocxTranslator:
                 ],
                 temperature=0.3
             )
-            translated_text = response.choices[0].message.content
-            print('3')
-            print(f"Translated to: {translated_text}")  # Debug: show translated text.
+            translated_text = response.choices[0].message.content.strip()
             return translated_text
         except Exception as e:
             print(f"Translation error: {e}")
@@ -61,35 +60,34 @@ class DocxTranslator:
 
     def translate_xml_to_language(self, xml_path):
         """Translate all text nodes in the document.xml while preserving XML structure and styles."""
-        parser = etree.XMLParser(remove_blank_text=False)
-        tree = etree.parse(xml_path, parser)
-        ns = {'w': self.word_ns}
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+        ET.register_namespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
         is_rtl = self.target_language in RTL_LANGUAGES
 
-        # Process each <w:t> element individually.
-        for text_elem in tree.xpath('//w:t', namespaces=ns):
+        # Process each text element (<w:t>) individually
+        for text_elem in root.findall(f'.//{self.word_ns}t'):
             if text_elem.text and text_elem.text.strip():
                 original_text = text_elem.text.strip()
-                print('going to trasnlate')
                 translated_text = self.translate_text(original_text)
                 text_elem.text = translated_text
 
-        # Adjust paragraph properties for RTL languages.
+        # If the target language is RTL, adjust paragraph properties accordingly.
         if is_rtl:
-            for paragraph in tree.xpath('//w:p', namespaces=ns):
-                pPr = paragraph.find('w:pPr', namespaces=ns)
+            for paragraph in root.findall(f'.//{self.word_ns}p'):
+                pPr = paragraph.find(f'{self.word_ns}pPr')
                 if pPr is None:
-                    pPr = etree.SubElement(paragraph, f"{{{self.word_ns}}}pPr")
-                bidi = pPr.find('w:bidi', namespaces=ns)
+                    pPr = ET.SubElement(paragraph, f'{self.word_ns}pPr')
+                bidi = pPr.find(f'{self.word_ns}bidi')
                 if bidi is None:
-                    bidi = etree.SubElement(pPr, f"{{{self.word_ns}}}bidi")
-                bidi.set(f"{{{self.word_ns}}}val", 'on')
+                    bidi = ET.SubElement(pPr, f'{self.word_ns}bidi')
+                bidi.set(f'{self.word_ns}val', 'on')
 
-        # Write the modified XML back to file.
-        tree.write(xml_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+        # Write back the modified XML
+        tree.write(xml_path, encoding='utf-8', xml_declaration=True)
 
     def run(self):
-        # Clean up any existing temporary folder.
+        # Ensure any pre-existing temporary folder is not used.
         if os.path.exists(self.extract_folder):
             try:
                 shutil.rmtree(self.extract_folder)
@@ -112,63 +110,6 @@ class DocxTranslator:
                     print(f"Warning: Could not clean up temporary folder: {e}")
 
 
-# def translate_file(input_file, output_file, target_language):
-#     """
-#     Dispatch function that creates an instance of the appropriate translator class based on file extension.
-#     """
-#     file_extension = os.path.splitext(input_file)[1].lower()
-
-#     if file_extension == '.docx':
-#         translator = DocxTranslator(input_file, output_file, target_language)
-#     else:
-#         raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx, .txt, .odt, .doc files")
-
-#     translator.run()
-
-
-class TxtTranslator:
-    def __init__(self, input_file, output_file, target_language):
-        self.input_file = input_file
-        self.output_file = output_file
-        self.target_language = target_language
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-    def translate_text_file(self):
-        """Read a TXT file, translate its content in segments, and write the translated text to an output file."""
-        try:
-            with open(self.input_file, 'r', encoding='utf-8') as file:
-                text_content = file.read()
-
-            if not text_content.strip():
-                print("Input text file is empty")
-                return
-
-            # Split text into segments (e.g., paragraphs)
-            segments = text_content.split('\n\n')
-            translated_segments = []
-
-            for segment in segments:
-                if segment.strip():
-                    response = self.client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
-                            {"role": "user", "content": segment}
-                        ],
-                        temperature=0.3
-                    )
-                    translated_segments.append(response.choices[0].message.content)
-
-            with open(self.output_file, 'w', encoding='utf-8') as file:
-                file.write('\n\n'.join(translated_segments))
-
-            print(f"Translation complete! Saved as: {self.output_file}")
-        except Exception as e:
-            print(f"Error during TXT translation: {e}")
-
-    def run(self):
-        self.translate_text_file()
-
 
 
 class OdtTranslator:
@@ -176,7 +117,8 @@ class OdtTranslator:
         self.input_file = input_file
         self.output_file = output_file
         self.target_language = target_language
-        self.extract_dir = "extracted_odt"
+        # Use a unique temporary directory for multi-user handling.
+        self.extract_dir = tempfile.mkdtemp(prefix="odt_extract_")
         self.content_xml_path = os.path.join(self.extract_dir, "content.xml")
         self.namespaces = {
             'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
@@ -184,7 +126,6 @@ class OdtTranslator:
             'style': 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
             'fo': 'urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0'
         }
-        # Initialize the LLM translation client
         self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     def extract_odt(self):
@@ -203,14 +144,14 @@ class OdtTranslator:
         return tree, root
     
     def extract_text_nodes(self, root):
-        # Get nodes that may contain translatable text
+        # Get nodes that may contain translatable text.
         text_nodes = (
             root.findall('.//text:h', self.namespaces) +
             root.findall('.//text:p', self.namespaces) +
             root.findall('.//text:span', self.namespaces)
         )
         texts_to_translate = []
-        node_mapping = []  # list of tuples (node, 'text' or 'tail')
+        node_mapping = []  # list of tuples (node, attribute 'text' or 'tail')
         for node in text_nodes:
             if node.text and node.text.strip():
                 texts_to_translate.append(node.text)
@@ -282,7 +223,7 @@ class OdtTranslator:
     
     def repackage_odt(self):
         # Package the modified files back into an .odt archive.
-        base_name = "temp_output"
+        base_name = self.output_file.replace('.odt', '')
         shutil.make_archive(base_name, 'zip', self.extract_dir)
         if os.path.exists(self.output_file):
             os.remove(self.output_file)
@@ -293,28 +234,29 @@ class OdtTranslator:
             shutil.rmtree(self.extract_dir)
     
     def run(self):
-        # Step 1: Extract the .odt file
+        # Step 1: Extract the .odt file into a unique temporary directory.
         self.extract_odt()
         
-        # Step 2: Parse content.xml
+        # Step 2: Parse content.xml from the extracted folder.
         tree, root = self.parse_content()
         
-        # Step 3: Extract text nodes to translate
+        # Step 3: Extract text nodes to translate.
         texts_to_translate, node_mapping, text_nodes = self.extract_text_nodes(root)
         
-        # Step 4: Translate texts using the LLM
+        # Step 4: Translate texts using the LLM.
         translated_texts = self.translate_texts(texts_to_translate)
         
-        # Step 5: Update XML with the translated texts
+        # Step 5: Update XML with the translated texts.
         self.update_content(node_mapping, translated_texts)
         
-        # Step 6: Add RTL formatting if the target language is RTL
+        # Step 6: Add RTL formatting if the target language is RTL.
         self.add_rtl_formatting(root, text_nodes)
         
-        # Step 7: Save the modified XML back to content.xml
+        # Step 7: Save the updated XML.
+        # This replaces the original content.xml file in the extracted folder with the new translated version.
         tree.write(self.content_xml_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
         
-        # (Optional) Output the first few lines for inspection
+        # (Optional) Output the first few lines for inspection.
         print("\nFirst 5 lines of modified content.xml:")
         with open(self.content_xml_path, 'r', encoding='utf-8') as f:
             for i, line in enumerate(f, 1):
@@ -322,7 +264,7 @@ class OdtTranslator:
                 if i >= 5:
                     break
         
-        # Validate the modified XML
+        # Validate the modified XML.
         try:
             etree.parse(self.content_xml_path, etree.XMLParser(remove_blank_text=True))
             print("XML validation successful!")
@@ -330,119 +272,9 @@ class OdtTranslator:
             print(f"XML validation failed: {e}")
             raise
         
-        # Step 8: Repackage the folder contents into a new .odt file
+        # Step 8: Repackage the folder contents into a new .odt file.
         self.repackage_odt()
         print(f"Translation complete! Saved as: {self.output_file}")
         
-        # Cleanup the temporary extraction folder
+        # Cleanup the temporary extraction folder.
         self.cleanup()
-
-
-class DocTranslator:
-    def __init__(self, input_file, output_file, target_language):
-        self.input_file = input_file
-        self.output_file = output_file
-        self.target_language = target_language
-        # OpenAI library should be preconfigured with your API key
-        # For example: openai.api_key = os.environ.get("OPENAI_API_KEY")
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-    def extract_text_from_doc(self):
-        """
-        Extracts text from a .doc file using antiword.
-        Returns the extracted text as a UTF-8 string.
-        """
-        try:
-            # Run antiword to extract text from the document.
-            result = subprocess.run(
-                ['antiword', self.input_file],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            if result.returncode != 0:
-                print(f"Error extracting text using antiword: {result.stderr}")
-                return ""
-            return result.stdout
-        except Exception as e:
-            print(f"Error extracting text: {e}")
-            return ""
-
-    def translate_text(self, text):
-        """
-        Translates text content paragraph by paragraph.
-        For right-to-left (RTL) languages, a right-to-left mark is added.
-        """
-        paragraphs = text.split('\n')
-        translated_paragraphs = []
-        is_rtl = self.target_language in RTL_LANGUAGES
-
-        for paragraph in paragraphs:
-            if not paragraph.strip():
-                translated_paragraphs.append("")
-                continue
-
-            try:
-                response = self.client.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": f"You are a translator. Translate the following text to {self.target_language}."},
-                        {"role": "user", "content": paragraph}
-                    ],
-                    temperature=0.3
-                )
-                translated = response.choices[0].message.content.strip()
-                
-                # If the target language is RTL, prepend the RTL mark
-                if is_rtl:
-                    translated = "\u200F" + translated
-                
-                translated_paragraphs.append(translated)
-            except Exception as e:
-                print(f"Translation error for paragraph '{paragraph}': {e}")
-                translated_paragraphs.append(paragraph)
-
-        return "\n".join(translated_paragraphs)
-
-    def create_translated_doc(self, translated_text):
-        """
-        Creates a new .doc file (as a plain text file with a .doc extension)
-        containing the translated text.
-        """
-        try:
-            with open(self.output_file, 'w', encoding='utf-8') as f:
-                f.write(translated_text)
-            print(f"Translation complete! Saved as: {self.output_file}")
-        except Exception as e:
-            print(f"Error creating translated doc file: {e}")
-
-    def run(self):
-        text = self.extract_text_from_doc()
-        print(f"Extracted text: {text[:100]}...")  # Debug: Check if text is extracted
-        if not text:
-            print("No text extracted from the document.")
-            return
-        translated_text = self.translate_text(text)
-        print(f"Translated text: {translated_text[:100]}...")  # Debug: Check translation
-        self.create_translated_doc(translated_text)
-
-
-
-def translate_file(input_file, output_file, target_language):
-    """
-    Dispatch function that creates an instance of the appropriate translator class based on file extension.
-    """
-    file_extension = os.path.splitext(input_file)[1].lower()
-
-    if file_extension == '.docx':
-        translator = DocxTranslator(input_file, output_file, target_language)
-    elif file_extension == '.txt':
-        translator = TxtTranslator(input_file, output_file, target_language)
-    elif file_extension == '.odt':
-        translator = OdtTranslator(input_file, output_file, target_language)
-    elif file_extension == '.doc':
-        translator = DocTranslator(input_file, output_file, target_language)
-    else:
-        raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx, .txt, .odt, .doc files")
-
-    translator.run()
