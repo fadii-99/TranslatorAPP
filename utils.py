@@ -4,6 +4,8 @@ import shutil
 import tempfile
 from openai import OpenAI
 from lxml import etree
+from dotenv import load_dotenv
+load_dotenv()
 
 RTL_LANGUAGES = {
     "Arabic", "Hebrew", "Persian", "Urdu", "Yiddish", 
