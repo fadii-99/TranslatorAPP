@@ -7,6 +7,10 @@ from lxml import etree
 from dotenv import load_dotenv
 load_dotenv()
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+print(f"OPENAI_API_KEY  {OPENAI_API_KEY}")
+
 RTL_LANGUAGES = {
     "Arabic", "Hebrew", "Persian", "Urdu", "Yiddish", 
     "Pashto", "Sindhi", "Dhivehi", "Kurdish"
@@ -22,7 +26,7 @@ class DocxTranslator:
         # Define the Word namespace.
         self.word_ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
         # Set up the OpenAI client (ensure OPENAI_API_KEY is set in your environment)
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self.client = OpenAI(api_key=OPENAI_API_KEY)
 
     def extract_docx(self):
         """Extract DOCX contents to a temporary folder and return the document.xml path."""
