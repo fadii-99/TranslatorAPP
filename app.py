@@ -12,7 +12,7 @@ from utils import translate_file
 # Load environment variables
 load_dotenv()
 # OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+OPENAI_API_KEY = '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'
 
 
 print(OPENAI_API_KEY)
