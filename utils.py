@@ -7,9 +7,8 @@ from lxml import etree
 from dotenv import load_dotenv
 load_dotenv()
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-print(f"OPENAI_API_KEY  {OPENAI_API_KEY}")
 
 RTL_LANGUAGES = {
     "Arabic", "Hebrew", "Persian", "Urdu", "Yiddish", 
@@ -17,7 +16,7 @@ RTL_LANGUAGES = {
 }
 
 class DocxTranslator:
-    def __init__(self, input_file, output_file, target_language):
+    def __init__(self, input_file, output_file, target_language, OPENAI_API_KEY):
         self.input_file = input_file
         self.output_file = output_file
         self.target_language = target_language
@@ -434,20 +433,20 @@ class DocTranslator:
 
 
 
-def translate_file(input_file, output_file, target_language):
+def translate_file(input_file, output_file, target_language, OPENAI_API_KEY):
     """
     Dispatch function that creates an instance of the appropriate translator class based on file extension.
     """
     file_extension = os.path.splitext(input_file)[1].lower()
 
     if file_extension == '.docx':
-        translator = DocxTranslator(input_file, output_file, target_language)
+        translator = DocxTranslator(input_file, output_file, target_language, OPENAI_API_KEY)
     elif file_extension == '.txt':
-        translator = TxtTranslator(input_file, output_file, target_language)
+        translator = TxtTranslator(input_file, output_file, target_language, OPENAI_API_KEY)
     elif file_extension == '.odt':
-        translator = OdtTranslator(input_file, output_file, target_language)
+        translator = OdtTranslator(input_file, output_file, target_language, OPENAI_API_KEY)
     elif file_extension == '.doc':
-        translator = DocTranslator(input_file, output_file, target_language)
+        translator = DocTranslator(input_file, output_file, target_language, OPENAI_API_KEY)
     else:
         raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx, .txt, .odt, .doc files")
 

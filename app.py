@@ -11,7 +11,11 @@ from utils import translate_file
 
 # Load environment variables
 load_dotenv()
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+
+
+print(OPENAI_API_KEY)
 
 # Function to process and translate PDF
 def process_pdf(file_path, selected_model, target_langs):
@@ -58,7 +62,8 @@ st.set_page_config(page_title="Document Translator", layout="centered")
 st.title("Document Translator with GPT-4o")
 
 # Step 1: User selects file format
-file_format = st.selectbox("Choose File Format to Upload:", [ "DOCX", "TXT", "ODT"])
+# file_format = st.selectbox("Choose File Format to Upload:", [ "DOCX", "TXT", "ODT"])
+file_format = st.selectbox("Choose File Format to Upload:", [ "DOCX"])
 
 # Step 2: File upload based on selected format
 if file_format == "PDF":
@@ -136,7 +141,7 @@ if uploaded_file and selected_model and target_langs:
                 output_file_path = f"translated_document_{target_langs[0].lower()}.{file_extension}"
                 
                 # Translate the file using your custom translator
-                translate_file(input_file_path, output_file_path, target_langs[0])
+                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY )
                 
                 # Define appropriate MIME types for DOCX files
                 mime_types = {
@@ -155,7 +160,7 @@ if uploaded_file and selected_model and target_langs:
 
             elif file_extension == "txt":
                 output_file_path = f"translated_document_{target_langs[0].lower()}.txt"
-                translate_file(input_file_path, output_file_path, target_langs[0])
+                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY)
                 with open(output_file_path, "rb") as f:
                     st.download_button(
                         label=f"Download Translated TXT ({target_langs[0]})",
@@ -165,7 +170,7 @@ if uploaded_file and selected_model and target_langs:
                     )
             elif file_extension == "odt":
                 output_file_path = f"translated_document_{target_langs[0].lower()}.odt"
-                translate_file(input_file_path, output_file_path, target_langs[0])
+                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY)
                 with open(output_file_path, "rb") as f:
                     st.download_button(
                         label=f"Download Translated TXT ({target_langs[0]})",
@@ -175,7 +180,7 @@ if uploaded_file and selected_model and target_langs:
                     )
             elif file_extension == "doc":
                 output_file_path = f"translated_document_{target_langs[0].lower()}.doc"
-                translate_file(input_file_path, output_file_path, target_langs[0])
+                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY)
                 with open(output_file_path, "rb") as f:
                     st.download_button(
                         label=f"Download Translated TXT ({target_langs[0]})",
