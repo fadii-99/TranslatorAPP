@@ -12,10 +12,12 @@ from utils import translate_file
 # Load environment variables
 load_dotenv()
 # OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_API_KEY = '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'
+headers = {
+    "authorization": st.secrets['OPENAI_API_KEY'],
+    "content-type": "application/json",
+}
 
-
-print(OPENAI_API_KEY)
+OPENAI_API_KEY = st.secrets['OPENAI_API_KEY']
 
 # Function to process and translate PDF
 def process_pdf(file_path, selected_model, target_langs):
