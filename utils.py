@@ -50,15 +50,13 @@ class DocxTranslator:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": f"""You are a translator. Translate the following text to {self.target_language}. Do not translate company names, platform names, or any similar proper nouns; these should remain in English.if no text then return that word as it is in english
+                    {"role": "system", "content": f"""You are a translator. Translate the following text to {self.target_language}. Do not translate company names, platform names, or any similar proper nouns; these should remain in English.
                      
-                     Rules:
+                    Rules:
                      - if no text then return that word as it is in english
                      - do not translate email addresses
                      - do not translate IP addresses
                      - do not translate any URLs
-                     - if any text you cannot translate then just return that word as it is in english.
-                     - never say this 'I'm sorry, but there is no text to translate. Please provide the text you would like me to translate to Arabic'
                      """},
                     {"role": "user", "content": text}
                 ],
