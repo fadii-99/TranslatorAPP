@@ -56,7 +56,7 @@ class DocxTranslator:
                      - if no text then return that word as it is in english
                      - do not translate email addresses
                      - do not translate IP addresses
-                     - do not translate any URLs
+                     - do not translate URLs(containing http:// or https://)
                      """},
                     {"role": "user", "content": text}
                 ],
