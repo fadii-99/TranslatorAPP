@@ -54,13 +54,9 @@ class DocxTranslator:
                      
                      Rules:
                      - if no text then return that word as it is in english
-                     - do not translate numbers (including phone numbers)
-                     - do not translate dates
                      - do not translate email addresses
                      - do not translate IP addresses
                      - do not translate any URLs
-                     - do not translate any text inside any HTML tags
-                     - do not translate any text inside any LaTeX tags
                      - if any text you cannot translate then just return that word as it is in english.
                      - never say this 'I'm sorry, but there is no text to translate. Please provide the text you would like me to translate to Arabic'
                      """},

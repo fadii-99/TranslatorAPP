@@ -61,6 +61,7 @@ def process_pdf(file_path, selected_model, target_langs):
 
     return pd.DataFrame(results)
 
+
 # Streamlit UI
 st.set_page_config(page_title="Document Translator", layout="centered")
 st.title("Document Translator with GPT-4o")
