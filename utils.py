@@ -59,7 +59,7 @@ class DocxTranslator:
                      - translate text in [] if not belong to any above Rules """},
                     {"role": "user", "content": text}
                 ],
-                temperature=0.3
+                temperature=0.03
             )
             translated_text = response.choices[0].message.content
             print('3')
@@ -97,6 +97,7 @@ class DocxTranslator:
                 if bidi is None:
                     bidi = etree.SubElement(pPr, f"{{{self.word_ns}}}bidi")
                 bidi.set(f"{{{self.word_ns}}}val", 'on')
+
 
         # Write the modified XML back to file.
         tree.write(xml_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
