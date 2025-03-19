@@ -50,9 +50,13 @@ class DocxTranslator:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": f"""You are a translator. Translate the following text to {self.target_language}. Do not translate company names, platform names, or any similar proper nouns; these should remain in English.
+                    {"role": "system", "content": f"""You are a translator. Translate the following sentence to {self.target_language}, maintain the original context of the sentence.
+                     
                      Rules:
-                     - if any text you cannot translate then just return that word as it is in english."""},
+                     - if any text you cannot translate then just return that word as it is in english.
+                     - Do not translate company names, platform names, or any similar proper nouns; these should remain in English
+                     - do not translate any text that is URL, email
+                     - translate text in [] if not belong to any above Rules """},
                     {"role": "user", "content": text}
                 ],
                 temperature=0.3
@@ -78,6 +82,8 @@ class DocxTranslator:
             if text_elem.text and text_elem.text.strip():
                 original_text = text_elem.text.strip()
                 print('going to trasnlate')
+                if original_text is None or original_text == ' ':
+                    continue
                 translated_text = self.translate_text(original_text)
                 text_elem.text = translated_text
 
