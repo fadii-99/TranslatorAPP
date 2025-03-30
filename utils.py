@@ -5,10 +5,18 @@ import tempfile
 from openai import OpenAI
 from lxml import etree
 from dotenv import load_dotenv
+from lxml import etree
+from modernmt import ModernMT
+
+
+
 load_dotenv()
 
 # OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
+from modernmt import ModernMT
+
+mmt = ModernMT("66402CAA-FBA1-82D1-5A3B-AECA4D9C0D84")
 
 RTL_LANGUAGES = {
     "Arabic", "Hebrew", "Persian", "Urdu", "Yiddish", 
@@ -31,6 +39,7 @@ class DocxTranslator:
         """Extract DOCX contents to a temporary folder and return the document.xml path."""
         with zipfile.ZipFile(self.input_file, 'r') as zip_ref:
             zip_ref.extractall(self.extract_folder)
+        
         return os.path.join(self.extract_folder, "word", "document.xml")
 
     def create_translated_docx(self):
@@ -56,7 +65,10 @@ class DocxTranslator:
                      - if any text you cannot translate then just return that word as it is in english.
                      - Do not translate company names, platform names, or any similar proper nouns; these should remain in English
                      - do not translate any text that is URL, email
-                     - translate text in [] if not belong to any above Rules """},
+                     - translate text in [] if not belong to any above Rules 
+                     
+                     Text to be translated: {text}
+                     """},
                     {"role": "user", "content": text}
                 ],
                 temperature=0.03
@@ -70,37 +82,57 @@ class DocxTranslator:
             # In case of an error, return the original text to avoid data loss.
             return text
 
-    def translate_xml_to_language(self, xml_path):
-        """Translate all text nodes in the document.xml while preserving XML structure and styles."""
+    def translate_xml_to_language(self, xml_path, source_lang="en", target_lang="ar", output_path=None):
+        # Parse the XML file
         parser = etree.XMLParser(remove_blank_text=False)
         tree = etree.parse(xml_path, parser)
-        ns = {'w': self.word_ns}
-        is_rtl = self.target_language in RTL_LANGUAGES
+        xml_string = etree.tostring(tree, encoding='unicode', pretty_print=True)
 
-        # Process each <w:t> element individually.
-        for text_elem in tree.xpath('//w:t', namespaces=ns):
-            if text_elem.text and text_elem.text.strip():
-                original_text = text_elem.text.strip()
-                print('going to trasnlate')
-                if original_text is None or original_text == ' ':
-                    continue
-                translated_text = self.translate_text(original_text)
-                text_elem.text = translated_text
+        print(xml_string[:50])
+        
+        # Parse the xml_string into an element tree
+        root = etree.fromstring(xml_string)
 
-        # Adjust paragraph properties for RTL languages.
-        if is_rtl:
-            for paragraph in tree.xpath('//w:p', namespaces=ns):
-                pPr = paragraph.find('w:pPr', namespaces=ns)
-                if pPr is None:
-                    pPr = etree.SubElement(paragraph, f"{{{self.word_ns}}}pPr")
-                bidi = pPr.find('w:bidi', namespaces=ns)
-                if bidi is None:
-                    bidi = etree.SubElement(pPr, f"{{{self.word_ns}}}bidi")
-                bidi.set(f"{{{self.word_ns}}}val", 'on')
+        print(f"Translated to: {root}") # Debug:
+        
+        # Iterate through the XML tree tag by tag
+        for element in root.iter():
+            if element.text and element.text.strip():
+                original_text = element.text.strip()
+                
+                # Translate the text using ModernMT
+                try:
+                    translation = ModernMT.translate(source_lang, target_lang, original_text)
+                    translated_text = translation['translation']
+                    
+                    # Update the element text with the translated text
+                    element.text = translated_text
+                    
+                    print(f"Translated: {original_text} -> {translated_text}")
+                except Exception as e:
+                    print(f"Error translating text '{original_text}': {e}")
+            
+            if element.tail and element.tail.strip():
+                original_tail = element.tail.strip()
+                
+                # Translate the tail text using ModernMT
+                try:
+                    translation = ModernMT.translate(source_lang, target_lang, original_tail)
+                    translated_tail = translation['translation']
+                    
+                    # Update the element tail with the translated text
+                    element.tail = translated_tail
+                    
+                    print(f"Translated Tail: {original_tail} -> {translated_tail}")
+                except Exception as e:
+                    print(f"Error translating tail text '{original_tail}': {e}")
 
-
-        # Write the modified XML back to file.
-        tree.write(xml_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+        # Save the translated XML if output path is provided
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(etree.tostring(root, encoding='unicode', pretty_print=True))
+        else:
+            print(etree.tostring(root, encoding='unicode', pretty_print=True))
 
     def run(self):
         # Clean up any existing temporary folder.
@@ -110,11 +142,15 @@ class DocxTranslator:
             except Exception as e:
                 print(f"Warning: Could not remove existing folder: {e}")
         os.makedirs(self.extract_folder, exist_ok=True)
+        print('1')
 
         try:
             xml_path = self.extract_docx()
+            print('2')
             self.translate_xml_to_language(xml_path)
+            print('3')
             self.create_translated_docx()
+            print('4')
             print(f"Translation complete! Saved as: {self.output_file}")
         except Exception as e:
             print(f"Error during DOCX translation: {e}")
