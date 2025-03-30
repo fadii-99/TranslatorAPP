@@ -17,7 +17,6 @@ load_dotenv()
 from modernmt import ModernMT
 
 mmt = ModernMT("66402CAA-FBA1-82D1-5A3B-AECA4D9C0D84")
-
 RTL_LANGUAGES = {
     "Arabic", "Hebrew", "Persian", "Urdu", "Yiddish", 
     "Pashto", "Sindhi", "Dhivehi", "Kurdish"
@@ -88,29 +87,30 @@ class DocxTranslator:
         tree = etree.parse(xml_path, parser)
         xml_string = etree.tostring(tree, encoding='unicode', pretty_print=True)
 
-        print(xml_string[:50])
+        # print("tags",xml_string[:50])
         
         # Parse the xml_string into an element tree
         root = etree.fromstring(xml_string)
 
-        print(f"Translated to: {root}") # Debug:
+        # print(f"Translated to: {root}") # Debug:
         
         # Iterate through the XML tree tag by tag
         for element in root.iter():
             if element.text and element.text.strip():
                 original_text = element.text.strip()
-                
+                # print   (f"Original: {original_text}")  # Debug: show original text.
                 # Translate the text using ModernMT
                 try:
-                    translation = ModernMT.translate(source_lang, target_lang, original_text)
-                    translated_text = translation['translation']
-                    
+                    print(source_lang, target_lang, original_text)
+                    translation = mmt.translate(source_lang, target_lang, original_text)
+                    translated_text = translation.translation
+                    print(f"Translated: {original_text} -> {translated_text}")  # Debug: show translated text.
                     # Update the element text with the translated text
                     element.text = translated_text
                     
-                    print(f"Translated: {original_text} -> {translated_text}")
+                    # print(f"Translated: {original_text} -> {translated_text}")
                 except Exception as e:
-                    print(f"Error translating text '{original_text}': {e}")
+                    print(f"Error translating text: {e}")
             
             if element.tail and element.tail.strip():
                 original_tail = element.tail.strip()
@@ -123,9 +123,9 @@ class DocxTranslator:
                     # Update the element tail with the translated text
                     element.tail = translated_tail
                     
-                    print(f"Translated Tail: {original_tail} -> {translated_tail}")
+                    # print(f"Translated Tail: {original_tail} -> {translated_tail}")
                 except Exception as e:
-                    print(f"Error translating tail text '{original_tail}': {e}")
+                    print(f"Error translating tail text : {e}")
 
         # Save the translated XML if output path is provided
         if output_path:
