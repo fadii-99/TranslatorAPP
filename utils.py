@@ -23,7 +23,7 @@ RTL_LANGUAGES = {
 }
 
 class DocxTranslator:
-    def __init__(self, input_file, output_file, target_language, OPENAI_API_KEY):
+    def __init__(self, input_file, output_file, target_language):
         self.input_file = input_file
         self.output_file = output_file
         self.target_language = target_language
@@ -32,7 +32,6 @@ class DocxTranslator:
         # Define the Word namespace.
         self.word_ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
         # Set up the OpenAI client (ensure OPENAI_API_KEY is set in your environment)
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
 
     def extract_docx(self):
         """Extract DOCX contents to a temporary folder and return the document.xml path."""
@@ -49,37 +48,6 @@ class DocxTranslator:
             os.remove(self.output_file)
         os.rename(base_name + '.zip', self.output_file)
 
-    def translate_text(self, text):
-        """Translate a piece of text using the OpenAI API."""
-        prompt = f"Translate the following English text to {self.target_language}:\n\n{text}"
-        print(f"Translating: {text}")  # Debug: show text being translated.
-        try:
-            print('1')
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": f"""You are a translator. Translate the following sentence to {self.target_language}, maintain the original context of the sentence.
-                     
-                     Rules:
-                     - if any text you cannot translate then just return that word as it is in english.
-                     - Do not translate company names, platform names, or any similar proper nouns; these should remain in English
-                     - do not translate any text that is URL, email
-                     - translate text in [] if not belong to any above Rules 
-                     
-                     Text to be translated: {text}
-                     """},
-                    {"role": "user", "content": text}
-                ],
-                temperature=0.03
-            )
-            translated_text = response.choices[0].message.content
-            print('3')
-            print(f"Translated to: {translated_text}")  # Debug: show translated text.
-            return translated_text
-        except Exception as e:
-            print(f"Translation error: {e}")
-            # In case of an error, return the original text to avoid data loss.
-            return text
 
     def translate_xml_to_language(self, xml_path, source_lang="en", target_lang="ar", output_path=None):
         # Parse the XML file
@@ -127,6 +95,17 @@ class DocxTranslator:
                 except Exception as e:
                     print(f"Error translating tail text : {e}")
 
+        if target_lang.lower() == 'ar':
+        # Iterate over all paragraph elements (w:p)
+            for p in root.findall('.//w:p', namespaces={'w': self.word_ns}):
+                # Get or create paragraph properties (w:pPr)
+                pPr = p.find('w:pPr', namespaces={'w': self.word_ns})
+                if pPr is None:
+                    pPr = etree.SubElement(p, '{%s}pPr' % self.word_ns)
+                # Add the bidi element if it's not already present
+                if pPr.find('{%s}bidi' % self.word_ns) is None:
+                    etree.SubElement(pPr, '{%s}bidi' % self.word_ns)
+
         # Save the translated XML if output path is provided
         if output_path:
             with open(output_path, "w", encoding="utf-8") as f:
@@ -147,7 +126,8 @@ class DocxTranslator:
         try:
             xml_path = self.extract_docx()
             print('2')
-            self.translate_xml_to_language(xml_path)
+            self.translate_xml_to_language(xml_path, output_path=xml_path)
+
             print('3')
             self.create_translated_docx()
             print('4')
@@ -161,19 +141,6 @@ class DocxTranslator:
                 except Exception as e:
                     print(f"Warning: Could not clean up temporary folder: {e}")
 
-
-# def translate_file(input_file, output_file, target_language):
-#     """
-#     Dispatch function that creates an instance of the appropriate translator class based on file extension.
-#     """
-#     file_extension = os.path.splitext(input_file)[1].lower()
-
-#     if file_extension == '.docx':
-#         translator = DocxTranslator(input_file, output_file, target_language)
-#     else:
-#         raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx, .txt, .odt, .doc files")
-
-#     translator.run()
 
 
 class TxtTranslator:
@@ -485,7 +452,7 @@ def translate_file(input_file, output_file, target_language, OPENAI_API_KEY):
     file_extension = os.path.splitext(input_file)[1].lower()
 
     if file_extension == '.docx':
-        translator = DocxTranslator(input_file, output_file, target_language, OPENAI_API_KEY)
+        translator = DocxTranslator(input_file, output_file, target_language)
     elif file_extension == '.txt':
         translator = TxtTranslator(input_file, output_file, target_language, OPENAI_API_KEY)
     elif file_extension == '.odt':
