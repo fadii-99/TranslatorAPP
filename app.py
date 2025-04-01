@@ -52,19 +52,8 @@ languages = ["Arabic"]
 target_langs = []
 
 if uploaded_file:
-    if file_extension == "pdf":
-        target_langs = st.multiselect("Select Target Languages:", languages, default=["Arabic"])
-    elif file_extension in "docx":
-        target_lang = st.selectbox("Select Target Language (for Word Documents):", languages, index=1)  # Default to Arabic
-        target_langs = [target_lang] if target_lang else []
-    elif file_extension == "txt":
-        target_lang = st.selectbox("Select Target Language (for TXT):", languages, index=1)  # Default to Arabic
-        target_langs = [target_lang] if target_lang else []
-    elif file_extension == "odt":
-        target_lang = st.selectbox("Select Target Language (for ODT):", languages, index=1)  # Default to Arabic
-        target_langs = [target_lang] if target_lang else []
-    elif file_extension == "doc":
-        target_lang = st.selectbox("Select Target Language (for doc):", languages, index=1)  # Default to Arabic
+    if file_extension in "docx":
+        target_lang = st.selectbox("Select Target Language (for Word Documents):", languages, index=0)  # Default to Arabic
         target_langs = [target_lang] if target_lang else []
 else:
     st.write(f"Please upload a {file_format} file to select target languages.")
