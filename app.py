@@ -15,50 +15,10 @@ load_dotenv()
 ModernMT_key = st.secrets['ModernMT_key']
 
 
-# Function to process and translate PDF
-def process_pdf(file_path, selected_model, target_langs):
-    loader = PyPDFLoader(file_path)
-    docs = loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=0)
-    splits = text_splitter.split_documents(docs)
-
-    prompt_translation = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-                Your task is to translate the provided text from English 
-                to the target language while maintaining its original meaning and context.
-                Ensure the translation is accurate, fluent, and culturally appropriate. 
-                Return the translated text only.
-                target language: {target}
-                source text: {text}
-                """,
-            ),
-        ]
-    )
-
-    llm = ChatOpenAI(model=selected_model, temperature=0.01)
-    runnable_translation = prompt_translation | llm
-
-    def get_translation(text, target):
-        return runnable_translation.invoke({"target": target, "text": text}).content
-
-    results = {"ENGLISH": []}
-    for lang in target_langs:
-        results[lang.upper()] = []
-
-    for split in splits:
-        results["ENGLISH"].append(split.page_content)
-        for lang in target_langs:
-            results[lang.upper()].append(get_translation(split.page_content, lang))
-
-    return pd.DataFrame(results)
-
 
 # Streamlit UI
 st.set_page_config(page_title="Document Translator", layout="centered")
-st.title("Document Translator with GPT-4o")
+st.title("Document Translator")
 
 # Step 1: User selects file format
 # file_format = st.selectbox("Choose File Format to Upload:", [ "DOCX", "TXT", "ODT"])
@@ -88,12 +48,12 @@ selected_model = st.selectbox("Select Translation Model:", ["gpt-4o", "gpt-4o-mi
 st.info("Source language: English (Fixed)")
 
 # Target language selection
-languages = ["French", "Arabic", "Spanish", "German"]
+languages = ["Arabic"]
 target_langs = []
 
 if uploaded_file:
     if file_extension == "pdf":
-        target_langs = st.multiselect("Select Target Languages:", languages, default=["French", "Arabic"])
+        target_langs = st.multiselect("Select Target Languages:", languages, default=["Arabic"])
     elif file_extension in "docx":
         target_lang = st.selectbox("Select Target Language (for Word Documents):", languages, index=1)  # Default to Arabic
         target_langs = [target_lang] if target_lang else []
