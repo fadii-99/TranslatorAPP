@@ -11,8 +11,8 @@ from utils import translate_file
 
 # Load environment variables
 load_dotenv()
-# ModernMT_key = os.environ.get("ModernMT_key")
-ModernMT_key = st.secrets['ModernMT_key']
+ModernMT_key = os.environ.get("ModernMT_key")
+# ModernMT_key = st.secrets['ModernMT_key']
 
 
 
@@ -42,7 +42,7 @@ elif file_format == "doc":
     file_extension = "doc" if uploaded_file else None
 
 # Model selection
-selected_model = st.selectbox("Select Translation Model:", ["gpt-4o", "gpt-4o-mini"])
+# selected_model = st.selectbox("Select Translation Model:", ["gpt-4o", "gpt-4o-mini"])
 
 # Fixed source language
 st.info("Source language: English (Fixed)")
@@ -59,7 +59,7 @@ else:
     st.write(f"Please upload a {file_format} file to select target languages.")
 
 # Add a Translate button to initiate translation
-if uploaded_file and selected_model and target_langs:
+if uploaded_file and target_langs:
     if st.button("Translate"):
         st.success(f"File uploaded successfully! Processing {file_format} file...")
         
