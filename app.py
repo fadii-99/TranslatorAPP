@@ -11,11 +11,9 @@ from utils import translate_file
 
 # Load environment variables
 load_dotenv()
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# ModernMT_key = os.environ.get("ModernMT_key")
+ModernMT_key = st.secrets['ModernMT_key']
 
-# OPENAI_API_KEY = st.secrets['OPENAI_API_KEY']
-
-# print(OPENAI_API_KEY)
 
 # Function to process and translate PDF
 def process_pdf(file_path, selected_model, target_langs):
@@ -123,26 +121,12 @@ if uploaded_file and selected_model and target_langs:
 
         # Start translation process with loading spinner
         with st.spinner(f"Translating {file_format} to {', '.join(target_langs)}..."):
-            if file_extension == "pdf":
-                df_results = process_pdf(input_file_path, selected_model, [lang.lower() for lang in target_langs])
-                st.write("Translation Preview:")
-                st.dataframe(df_results.head(20))
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-                    df_results.to_excel(writer, index=False)
-                excel_buffer.seek(0)
-                st.download_button(
-                    label="Download Translations as Excel",
-                    data=excel_buffer,
-                    file_name="translated_results.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                )
 
-            elif file_extension == "docx":
+            if file_extension == "docx":
                 output_file_path = f"translated_document_{target_langs[0].lower()}.{file_extension}"
                 
                 # Translate the file using your custom translator
-                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY )
+                translate_file(input_file_path, output_file_path, target_langs[0], ModernMT_key )
                 
                 # Define appropriate MIME types for DOCX files
                 mime_types = {
@@ -159,36 +143,6 @@ if uploaded_file and selected_model and target_langs:
                         mime=mime_types[file_extension],
                     )
 
-            elif file_extension == "txt":
-                output_file_path = f"translated_document_{target_langs[0].lower()}.txt"
-                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY)
-                with open(output_file_path, "rb") as f:
-                    st.download_button(
-                        label=f"Download Translated TXT ({target_langs[0]})",
-                        data=f,
-                        file_name=f"translated_document_{target_langs[0].lower()}.txt",
-                        mime="text/plain",
-                    )
-            elif file_extension == "odt":
-                output_file_path = f"translated_document_{target_langs[0].lower()}.odt"
-                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY)
-                with open(output_file_path, "rb") as f:
-                    st.download_button(
-                        label=f"Download Translated TXT ({target_langs[0]})",
-                        data=f,
-                        file_name=f"translated_document_{target_langs[0].lower()}.odt",
-                        mime="text/plain",
-                    )
-            elif file_extension == "doc":
-                output_file_path = f"translated_document_{target_langs[0].lower()}.doc"
-                translate_file(input_file_path, output_file_path, target_langs[0], OPENAI_API_KEY)
-                with open(output_file_path, "rb") as f:
-                    st.download_button(
-                        label=f"Download Translated TXT ({target_langs[0]})",
-                        data=f,
-                        file_name=f"translated_document_{target_langs[0].lower()}.doc",
-                        mime="text/plain",
-                    )
 else:
     if uploaded_file and not target_langs:
         st.warning("Please select a target language and click 'Translate' to proceed.")
