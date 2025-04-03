@@ -2,12 +2,13 @@ import os
 import zipfile
 import shutil
 import tempfile
-from openai import OpenAI
+from langchain_openai import ChatOpenAI 
 from lxml import etree
 from dotenv import load_dotenv
 from lxml import etree
 from modernmt import ModernMT
-
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 
 
 load_dotenv()
@@ -23,15 +24,21 @@ RTL_LANGUAGES = {
 }
 
 class DocxTranslator:
-    def __init__(self, input_file, output_file, target_language,ModernMT_key):
+    def __init__(self, input_file, output_file, target_language, ModernMT_key, OPENAI_API_KEY):
         self.input_file = input_file
         self.output_file = output_file
         self.target_language = target_language
-        # Use a unique temporary folder for multi-user handling.
+        self.source_lang = 'English'
         self.extract_folder = tempfile.mkdtemp(prefix="docx_extract_")
-        # Define the Word namespace.
         self.word_ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-        self.mmt = ModernMT(ModernMT_key)
+        if ModernMT_key:
+            self.mmt = ModernMT(ModernMT_key)
+            self.OPENAI_API_KEY = None  # Do not initialize OpenAI client
+        elif OPENAI_API_KEY:
+            self.mmt = None  # Do not initialize ModernMT
+            self.OPENAI_API_KEY = OPENAI_API_KEY
+        else:
+            raise ValueError("Either ModernMT_key or OPENAI_API_KEY must be provided")
 
     def extract_docx(self):
         """Extract DOCX contents to a temporary folder and return the document.xml path."""
@@ -42,11 +49,58 @@ class DocxTranslator:
 
     def create_translated_docx(self):
         """Create a new DOCX file from the modified extracted contents."""
+        
         base_name = self.output_file.replace('.docx', '')
         shutil.make_archive(base_name, 'zip', self.extract_folder)
         if os.path.exists(self.output_file):
             os.remove(self.output_file)
         os.rename(base_name + '.zip', self.output_file)
+
+    def translate_text(self, text):
+        if self.OPENAI_API_KEY:  # Using OpenAI API for translation
+            prompt = PromptTemplate.from_template(
+                    """
+                    You are tasked with translating the given sentence from {source_language} into {output_language}. 
+                    Your translation must be precise, accurate, and natural-sounding in the target language, preserving the original meaning without adding or omitting information. 
+                    Avoid overly literal translations and instead focus on conveying the correct context clearly and concisely.
+
+                    Original sentence ({source_language}):
+                    "{input}"
+
+                    Translated sentence ({output_language}):
+                    """
+                )
+
+            llm = ChatOpenAI(model_name="gpt-4o", api_key=self.OPENAI_API_KEY)
+            chain = prompt | llm
+
+            try:
+                target_lang = ''
+                if self.target_language == "ar":
+                    target_lang = "Arabic"
+                response = chain.invoke(
+                    {
+                        "source_language": self.source_lang,
+                        "output_language": target_lang,
+                        "input": text,
+                    }
+                )
+                print(f"response:  {response}")
+                translated_text = response.content.strip()
+
+                return translated_text
+            except Exception as e:
+                print(f"Translation error: {e}")
+                return text  # Return original text in case of error
+
+        elif self.mmt:  # Using ModernMT API for translation
+            try:
+                translation = self.mmt.translate("en", self.target_language, text)
+                translated_text = translation.translation
+                return translated_text
+            except Exception as e:
+                print(f"Error translating text with ModernMT: {e}")
+                return text  # Return original text in case of error
 
 
     def translate_xml_to_language(self, xml_path, source_lang="en", target_lang="ar", output_path=None):
@@ -66,32 +120,23 @@ class DocxTranslator:
         for element in root.iter():
             if element.text and element.text.strip():
                 original_text = element.text.strip()
-                # print   (f"Original: {original_text}")  # Debug: show original text.
-                # Translate the text using ModernMT
                 try:
-                    print(source_lang, target_lang, original_text)
-                    translation = self.mmt.translate(source_lang, target_lang, original_text)
-                    translated_text = translation.translation
-                    print(f"Translated: {original_text} -> {translated_text}")  # Debug: show translated text.
-                    # Update the element text with the translated text
+                    original_text = element.text.strip()
+                    translated_text = self.translate_text(original_text)
+                    print(f"Translated: {original_text} -> \n\n from langchain  \n{translated_text}")  # Debug: show translated text.
                     element.text = translated_text
                     
-                    # print(f"Translated: {original_text} -> {translated_text}")
                 except Exception as e:
                     print(f"Error translating text: {e}")
             
             if element.tail and element.tail.strip():
                 original_tail = element.tail.strip()
                 
-                # Translate the tail text using ModernMT
                 try:
-                    translation = ModernMT.translate(source_lang, target_lang, original_tail)
-                    translated_tail = translation['translation']
+                    translated_tail = self.translate_text(original_tail)
                     
-                    # Update the element tail with the translated text
                     element.tail = translated_tail
                     
-                    # print(f"Translated Tail: {original_tail} -> {translated_tail}")
                 except Exception as e:
                     print(f"Error translating tail text : {e}")
 
@@ -121,16 +166,12 @@ class DocxTranslator:
             except Exception as e:
                 print(f"Warning: Could not remove existing folder: {e}")
         os.makedirs(self.extract_folder, exist_ok=True)
-        print('1')
 
         try:
             xml_path = self.extract_docx()
-            print('2')
             self.translate_xml_to_language(xml_path, output_path=xml_path)
 
-            print('3')
             self.create_translated_docx()
-            print('4')
             print(f"Translation complete! Saved as: {self.output_file}")
         except Exception as e:
             print(f"Error during DOCX translation: {e}")
@@ -144,14 +185,14 @@ class DocxTranslator:
 
 
 
-def translate_file(input_file, output_file, target_language, ModernMT_key):
+def translate_file(input_file, output_file, target_language, ModernMT_key, OPENAI_API_KEY):
     """
     Dispatch function that creates an instance of the appropriate translator class based on file extension.
     """
     file_extension = os.path.splitext(input_file)[1].lower()
 
     if file_extension == '.docx':
-        translator = DocxTranslator(input_file, output_file, target_language, ModernMT_key)
+        translator = DocxTranslator(input_file, output_file, target_language, ModernMT_key, OPENAI_API_KEY)
     else:
         raise ValueError(f"Unsupported file type: {file_extension}. Please use .docx")
 

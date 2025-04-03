@@ -8,12 +8,16 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 from utils import translate_file
-
+import uuid
 # Load environment variables
 load_dotenv()
 ModernMT_key = os.environ.get("ModernMT_key")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 # ModernMT_key = st.secrets['ModernMT_key']
+# OPENAI_API_KEY = st.secrets['OPENAI_API_KEY']
 
+print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
+print(f"ModernMT_key: {ModernMT_key}")
 
 
 # Streamlit UI
@@ -42,19 +46,22 @@ elif file_format == "doc":
     file_extension = "doc" if uploaded_file else None
 
 # Model selection
-# selected_model = st.selectbox("Select Translation Model:", ["gpt-4o", "gpt-4o-mini"])
+selected_model = st.selectbox("Select Translation Model:", ["ModernMT", "OpenAI"])
 
 # Fixed source language
 st.info("Source language: English (Fixed)")
 
 # Target language selection
-languages = ["Arabic"]
+language_map = {
+    "Arabic": "ar",
+}
+languages = list(language_map.keys())  # Get the list of languages from the dictionary
 target_langs = []
 
 if uploaded_file:
     if file_extension in "docx":
         target_lang = st.selectbox("Select Target Language (for Word Documents):", languages, index=0)  # Default to Arabic
-        target_langs = [target_lang] if target_lang else []
+        target_langs = [language_map.get(target_lang)] if target_lang else []
 else:
     st.write(f"Please upload a {file_format} file to select target languages.")
 
@@ -64,18 +71,21 @@ if uploaded_file and target_langs:
         st.success(f"File uploaded successfully! Processing {file_format} file...")
         
         # Save uploaded file temporarily
-        input_file_path = f"uploaded_file.{file_extension}"
+        input_file_path = f"uploaded_file_{str(uuid.uuid4())}.{file_extension}"
         with open(input_file_path, "wb") as f:
             f.write(uploaded_file.read())
 
         # Start translation process with loading spinner
-        with st.spinner(f"Translating {file_format} to {', '.join(target_langs)}..."):
+        with st.spinner(f"Translating {file_format} to {', '.join(target_langs)} using {selected_model}..."):
 
             if file_extension == "docx":
-                output_file_path = f"translated_document_{target_langs[0].lower()}.{file_extension}"
+                output_file_path = f"translated_document_{target_langs[0].lower()}_{selected_model}_{str(uuid.uuid4())}.{file_extension}"
                 
                 # Translate the file using your custom translator
-                translate_file(input_file_path, output_file_path, target_langs[0], ModernMT_key )
+                if selected_model == 'OpenAI':
+                    translate_file(input_file_path, output_file_path, target_langs[0], None, OPENAI_API_KEY )
+                else:
+                    translate_file(input_file_path, output_file_path, target_langs[0], ModernMT_key, None )
                 
                 # Define appropriate MIME types for DOCX files
                 mime_types = {
@@ -88,7 +98,7 @@ if uploaded_file and target_langs:
                     st.download_button(
                         label=f"Download Translated Document ({target_langs[0]})",
                         data=f,
-                        file_name=f"translated_document_{target_langs[0].lower()}.{file_extension}",
+                        file_name=f"{output_file_path}",
                         mime=mime_types[file_extension],
                     )
 
